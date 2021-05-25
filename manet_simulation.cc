@@ -52,7 +52,7 @@ RoutingExperiment::RoutingExperiment ()
     packetsReceived (0),
     m_CSVfileName ("/home/vlad/jupyter_notebook_project_dir/p2p_manet.output.csv"),
     m_traceMobility (false),
-    m_protocol (2) // AODV
+    m_protocol (3) // DSDV
 {
 }
 
@@ -101,6 +101,7 @@ RoutingExperiment::CheckThroughput ()
       << packetsReceived << ","
       << m_protocolName << ","
       << std::endl;
+
 
   out.close ();
   packetsReceived = 0;
@@ -156,15 +157,14 @@ RoutingExperiment::Run ()
   std::string rate ("2048bps");
   std::string phyMode ("DsssRate11Mbps");
 
-  std::string txt_name ("/home/vlad/jupyter_notebook_project_dir/my_network_with_nodes.txt");
-  std::string tr_name ("/home/vlad/jupyter_notebook_project_dir/p2p_manet");
+  std::string txt_name ("/home/vlad/jupyter_notebook_project_dir/my_network_with_nodes32.txt");
+  std::string tr_name ("/home/vlad/jupyter_notebook_project_dir/p2p_manet32");
   m_protocolName = "DSDV";
 
   Config::SetDefault  ("ns3::OnOffApplication::PacketSize",StringValue ("64"));
   Config::SetDefault ("ns3::OnOffApplication::DataRate",  StringValue (rate));
   Config::SetDefault ("ns3::WifiRemoteStationManager::NonUnicastMode",StringValue (phyMode));
   
-  double TotalTime = 60.0;
   uint16_t port = 9;
   double txp = 4.6875;
 	
@@ -200,12 +200,15 @@ RoutingExperiment::Run ()
   WifiMacHelper wifiMac2;
   wifiMac2.SetType ("ns3::AdhocWifiMac");
 
+
 	ifstream in;
 	in.open(txt_name);
+
   if (in.is_open())
   {
     cout << "File open" << endl;
   }
+
   else
   {
     cout << "File open is failed" << endl;
@@ -223,7 +226,7 @@ RoutingExperiment::Run ()
   Ptr<ListPositionAllocator> positionAlloc = CreateObject <ListPositionAllocator>();  
   double x, y;
   int player_id;
-  int playersNodes[nodesNumber ];
+  int playersNodes[nodesNumber];
   for (int node = 0; node < nodesNumber; node++)
   {
     in >> x >> y >> player_id;		  
@@ -287,6 +290,7 @@ RoutingExperiment::Run ()
   NetDeviceContainer adhocDevices2 = wifi.Install (wifiPhy2, wifiMac2, n_container2);
   adhocInterfaces.Add(address.Assign(adhocDevices2));
 
+
   in.close();
 
   cout << "PACKETS INITIALIZE\n";
@@ -296,54 +300,44 @@ RoutingExperiment::Run ()
   OnOffHelper onoff ("ns3::UdpSocketFactory",Address ());
   onoff.SetAttribute ("OnTime", StringValue ("ns3::ConstantRandomVariable[Constant=1.0]"));
   onoff.SetAttribute ("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=0.0]"));
-  double startTime = 10.0;
-  double shift = (TotalTime-startTime)/(container_size+container2_size);
+  double startTime = 25.0;
+  double shift = 0.7;
+  
 
   for (int i = 0; i < container_size; i++)
   {
-    startTime += shift;
-    for (int j = 0; j < container_size; j++)
-    {
-      if (i !=j)
-      {
-        Ptr<Socket> sink = SetupPacketReceive (adhocInterfaces.GetAddress (i), n_container.Get (i));
-
-        AddressValue remoteAddress (InetSocketAddress (adhocInterfaces.GetAddress (i), port));
-        onoff.SetAttribute ("Remote", remoteAddress);
-
-        Ptr<UniformRandomVariable> var = CreateObject<UniformRandomVariable> ();
-        ApplicationContainer temp = onoff.Install (n_container.Get (j));
-        
-        temp.Start (Seconds (var->GetValue (startTime,startTime+1.0)));
-        temp.Stop (Seconds (startTime+shift));
-      }
-      
-    }
-  }
-
-  for (int i = 0; i < container2_size; i++)
-  {
-    startTime += shift;
     for (int j = 0; j < container2_size; j++)
     {
-      if (i !=j)
-      {
-        Ptr<Socket> sink = SetupPacketReceive (adhocInterfaces.GetAddress (container_size+dronsNumber+i), n_container2.Get (i));
+      Ptr<Socket> sink = SetupPacketReceive (adhocInterfaces.GetAddress (container_size+container2_size-1), dronContainer.Get (0));
 
-        AddressValue remoteAddress (InetSocketAddress (adhocInterfaces.GetAddress (container_size+dronsNumber+i), port));
-        onoff.SetAttribute ("Remote", remoteAddress);
+      AddressValue remoteAddress (InetSocketAddress (adhocInterfaces.GetAddress (container_size+container2_size-1), port));
+      onoff.SetAttribute ("Remote", remoteAddress);
 
-        Ptr<UniformRandomVariable> var = CreateObject<UniformRandomVariable> ();
-        ApplicationContainer temp = onoff.Install (n_container2.Get (j));
-
-        temp.Start (Seconds (var->GetValue (startTime,startTime+1.0)));
-        temp.Stop (Seconds (startTime+shift));
-      }
+      ApplicationContainer temp = onoff.Install (n_container2.Get (j));
       
+      Ptr<UniformRandomVariable> var = CreateObject<UniformRandomVariable> ();
+      temp.Start (Seconds (var->GetValue (startTime,startTime+0.03)));
+      temp.Stop (Seconds (startTime+shift)); 
     }
+    startTime += shift;
   }
 
-    
+  for (int i = 0; i < container_size; i++)
+  {
+    for (int j = 0; j < container2_size; j++)
+    {
+      Ptr<Socket> sink = SetupPacketReceive (adhocInterfaces.GetAddress (i), n_container.Get (i));
+
+      AddressValue remoteAddress (InetSocketAddress (adhocInterfaces.GetAddress (i), port));
+      onoff.SetAttribute ("Remote", remoteAddress);
+
+      ApplicationContainer temp = onoff.Install (dronContainer.Get (0));
+      Ptr<UniformRandomVariable> var = CreateObject<UniformRandomVariable> ();
+      temp.Start (Seconds (var->GetValue (startTime,startTime+0.03)));
+      temp.Stop (Seconds (startTime+shift)); 
+    }
+    startTime += shift;
+  }  
 
   cout << "FLOWMONITOR INITIALIZE\n";
   Ptr<FlowMonitor> flowmon;
@@ -354,7 +348,7 @@ RoutingExperiment::Run ()
 
   CheckThroughput ();
 
-  Simulator::Stop (Seconds (TotalTime));
+  Simulator::Stop (Seconds (startTime));
   Simulator::Run ();
 
   flowmon->SerializeToXmlFile ((tr_name + ".flowmon").c_str(), true, true);
